@@ -66,7 +66,8 @@ class Settings:
     LIT = "defaultLit"
     NORMALS = "normals"
     DEPTH = "depth"
-
+    TRANSPRAENT="transparent"
+    
     DEFAULT_PROFILE_NAME = "Bright day with sun at +Y [default]"
     POINT_CLOUD_PROFILE_NAME = "Cloudy day (no direct sun)"
     CUSTOM_PROFILE_NAME = "Custom"
@@ -199,8 +200,10 @@ class Settings:
             Settings.LIT: rendering.MaterialRecord(),
             Settings.UNLIT: rendering.MaterialRecord(),
             Settings.NORMALS: rendering.MaterialRecord(),
-            Settings.DEPTH: rendering.MaterialRecord()
+            Settings.DEPTH: rendering.MaterialRecord(),
+            Settings.TRANSPRAENT: rendering.MaterialRecord()
         }
+        
         self._materials[Settings.LIT].base_color = [0.9, 0.9, 0.9, 1.0]
         self._materials[Settings.LIT].shader = Settings.LIT
         self._materials[Settings.UNLIT].base_color = [0.9, 0.9, 0.9, 1.0]
@@ -208,10 +211,21 @@ class Settings:
         self._materials[Settings.NORMALS].shader = Settings.NORMALS
         self._materials[Settings.DEPTH].shader = Settings.DEPTH
 
+
+        self._materials[Settings.TRANSPRAENT].shader = 'defaultLitSSR'
+        self._materials[Settings.TRANSPRAENT].base_color = [0.467, 0.467, 0.467, 0.4]
+        self._materials[Settings.TRANSPRAENT].base_roughness = 0.0
+        self._materials[Settings.TRANSPRAENT].base_reflectance = 0.0
+        self._materials[Settings.TRANSPRAENT].base_clearcoat = 1.0
+        self._materials[Settings.TRANSPRAENT].thickness = 1.0
+        self._materials[Settings.TRANSPRAENT].transmission = 1.0
+        self._materials[Settings.TRANSPRAENT].absorption_distance = 10
+        self._materials[Settings.TRANSPRAENT].absorption_color = [0.5, 0.5, 0.5]
+
         # Conveniently, assigning from self._materials[...] assigns a reference,
         # not a copy, so if we change the property of a material, then switch
         # to another one, then come back, the old setting will still be there.
-        self.material = self._materials[Settings.LIT]
+        self.material = self._materials[Settings.TRANSPRAENT]
 
     def set_material(self, name):
         self.material = self._materials[name]
@@ -239,9 +253,9 @@ class AppWindow:
 
     DEFAULT_IBL = "default"
 
-    MATERIAL_NAMES = ["Lit", "Unlit", "Normals", "Depth"]
+    MATERIAL_NAMES = ["Lit", "Unlit", "Normals", "Depth","Transparent"]
     MATERIAL_SHADERS = [
-        Settings.LIT, Settings.UNLIT, Settings.NORMALS, Settings.DEPTH
+        Settings.LIT, Settings.UNLIT, Settings.NORMALS, Settings.DEPTH, Settings.TRANSPRAENT
     ]
 
     BODY_MODEL_NAMES = ["SMPL", "SMPLX", "MANO", "FLAME"]
@@ -511,6 +525,8 @@ class AppWindow:
         self._shader.add_item(AppWindow.MATERIAL_NAMES[1])
         self._shader.add_item(AppWindow.MATERIAL_NAMES[2])
         self._shader.add_item(AppWindow.MATERIAL_NAMES[3])
+        self._shader.add_item(AppWindow.MATERIAL_NAMES[4])
+
         self._shader.set_on_selection_changed(self._on_shader)
         self._material_prefab = gui.Combobox()
         for prefab_name in sorted(Settings.PREFAB.keys()):
@@ -597,6 +613,9 @@ class AppWindow:
 
         self._body_pose_reset = gui.Button("Reset pose")
         self._body_pose_ik = gui.Button("Run IK")
+        
+        self._show_control_points = gui.Checkbox("Show control points")
+        self._show_control_points.set_on_checked(self._on_show_control_points)
 
         self._show_joints = gui.Checkbox("Show joints")
         self._show_joints.set_on_checked(self._on_show_joints)
@@ -663,6 +682,11 @@ class AppWindow:
         h.add_child(self._show_joints)
         h.add_child(self._show_joint_labels)
         self.model_settings.add_child(h)
+        
+        h = gui.Horiz(0.25 * em)  # row 2+
+        h.add_child(self._show_control_points)
+        self.model_settings.add_child(h)
+        
 
         h = gui.Horiz(0.25 * em)  # row 3
         h.add_child(gui.Label("Pose Controls"))
@@ -905,11 +929,16 @@ class AppWindow:
                 self._scene.scene.remove_geometry(f"__joints_{i}__")
 
         green = [0.3, 0.7, 0.3, 1.0]
-        red = [0.7, 0.3, 0.3, 1.0]
-        hand_radius = 0.01
-        foot_radius = 0.01
-        head_radius = 0.007
-        body_radius = 0.05
+        red = [0.0, 0.1, 0.3, 1.0]
+        # hand_radius = 0.01
+        # foot_radius = 0.01
+        # head_radius = 0.007
+        # body_radius = 0.05
+        hand_radius = 0.03
+        foot_radius = 0.03
+        head_radius = 0.03
+        orther_radius=0.000001
+        body_radius = 0.03
         joint_names = AppWindow.KEYPOINT_NAMES[self._body_model.selected_text]
 
         mat = rendering.MaterialRecord()
@@ -923,14 +952,19 @@ class AppWindow:
         joints = AppWindow.JOINTS
         if show:
             # logger.info('drawing joints')
+            # for i in range(joints.shape[0]):
             for i in range(joints.shape[0]):
-                radius = body_radius
-                if joint_names[i] in LEFT_HAND_KEYPOINT_NAMES + RIGHT_HAND_KEYPOINT_NAMES:
-                    radius = hand_radius
-                elif joint_names[i] in HEAD_KEYPOINT_NAMES:
-                    radius = head_radius
-                elif joint_names[i] in FOOT_KEYPOINT_NAMES:
-                    radius = foot_radius
+                # radius = body_radius
+                if i<24:
+                    radius = body_radius
+                else:
+                    radius = orther_radius
+                # if joint_names[i] in LEFT_HAND_KEYPOINT_NAMES + RIGHT_HAND_KEYPOINT_NAMES:
+                #     radius = hand_radius
+                # elif joint_names[i] in HEAD_KEYPOINT_NAMES:
+                #     radius = head_radius
+                # elif joint_names[i] in FOOT_KEYPOINT_NAMES:
+                #     radius = foot_radius
 
                 sg = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
                 sg.compute_vertex_normals()
@@ -953,6 +987,51 @@ class AppWindow:
 
         self._on_show_joint_labels(self._show_joint_labels.checked)
         # import ipdb; ipdb.set_trace()
+
+    def _on_show_control_points(self, show):
+        # for i in range(150):
+        #     if self._scene.scene.has_geometry(f"__joints_{i}__"):
+        #         self._scene.scene.remove_geometry(f"__joints_{i}__")
+
+        green = [0.3, 0.7, 0.3, 1.0]
+        red = [1.0, 0.0, 0.0, 1.0]
+        body_radius = 0.02
+
+        mat = rendering.MaterialRecord()
+        mat.base_color = red
+        mat.shader = "defaultLit"
+
+        mat_selected = rendering.MaterialRecord()
+        mat_selected.base_color = green
+        mat_selected.shader = "defaultLit"
+        
+        control_points = AppWindow.CONTROL_POINTS
+        if show:
+            # logger.info('drawing joints')
+            # print("joints.shape:",control_points.shape)
+            # for i in range(joints.shape[0]):
+            for i in range(control_points.shape[0]):
+                radius = body_radius
+                sg = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
+                sg.compute_vertex_normals()
+                # if i == AppWindow.SELECTED_JOINT:
+                #     sg.paint_uniform_color(green)
+                # else:
+                # sg.paint_uniform_color(red)
+                sg.translate(control_points[i])
+                # if (AppWindow.SELECTED_JOINT is not None) and (i == AppWindow.SELECTED_JOINT):
+                #     self._scene.scene.add_geometry(f"__control_points_{i}__", sg, mat_selected)
+                # else:
+                self._scene.scene.add_geometry(f"__control_points_{i}__", sg, mat)
+
+            # logger.debug(AppWindow.JOINTS[20])
+        else:
+            # import ipdb; ipdb.set_trace()
+            for i in range(control_points.shape[0]):
+                if self._scene.scene.has_geometry(f"__control_points_{i}__"):
+                    self._scene.scene.remove_geometry(f"__control_points_{i}__")
+
+        # self._on_show_joint_labels(self._show_joint_labels.checked)
 
     def _on_use_ibl(self, use):
         self.settings.use_ibl = use
@@ -1463,6 +1542,8 @@ class AppWindow:
         )
         verts = model_output.vertices[0].detach().numpy()
         AppWindow.JOINTS = model_output.joints[0].detach().numpy()
+        
+        AppWindow.CONTROL_POINTS = model_output.vertices[0][[411,5905,2445,6618,3216]].detach().numpy()
         faces = model.faces
 
         mesh = o3d.geometry.TriangleMesh()
@@ -1475,7 +1556,7 @@ class AppWindow:
         min_y = -mesh.get_min_bound()[1]
         mesh.translate([0, min_y, 0])
         AppWindow.JOINTS += np.array([0, min_y, 0])
-
+        AppWindow.CONTROL_POINTS += np.array([0, min_y, 0])
         self._scene.scene.add_geometry("__body_model__", mesh,
                                        self.settings.material)
         bounds = mesh.get_axis_aligned_bounding_box()
